@@ -43,8 +43,8 @@ local function close_pipes(pipes, pipe_name)
 end
 
 --- Create all pipes (stdin, stdout, stderr, and exec_error for reporting execp failures)
---- @return table|nil pipes table with stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, exec_error_r, exec_error_w or nil on error
---- @return string|nil error message if creation failed
+--- @return table|nil #pipes table with stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, exec_error_r, exec_error_w or nil on error
+--- @return string|nil #error message if creation failed
 local function create_pipes()
     local pipes = {}
 
@@ -97,8 +97,8 @@ end
 --- Read as much data as possible from a pipe
 --- @param pipes table pipe file descriptors
 --- @param name string name of the pipe to read from
---- @return string|nil read data or nil on error
---- @return string|nil error message if read failed
+--- @return string|nil #data read or nil on error
+--- @return string|nil #error message if read failed
 local function read_all(pipes, name)
     local data = ""
 
@@ -129,8 +129,8 @@ end
 --- @param pipes table pipe file descriptors
 --- @param name string name of the pipe to write to
 --- @param data table input data state {data=string, pos=number}
---- @return integer|nil number of data bytes written or nil on error
---- @return string|nil error message if write failed
+--- @return integer|nil #number of data bytes written or nil on error
+--- @return string|nil #error message if write failed
 local function write_all(pipes, name, data)
     local total_written = 0
 
@@ -174,8 +174,8 @@ end
 --- @param pipes table pipe file descriptors
 --- @param data table input data state {data=string, pos=number}
 --- @param result table result table to populate
---- @return boolean|nil true if pipes remain, false if all closed, nil on error
---- @return string|nil error message if operation failed
+--- @return boolean|nil #true if pipes remain, false if all closed, nil on error
+--- @return string|nil #error message if operation failed
 local function poll_and_read_write(pipes, data, result)
     -- Setup poll file descriptors table
     local fds = {}
@@ -278,8 +278,8 @@ end
 --- @param pid number child process ID
 --- @param pipes table pipe file descriptors
 --- @param input_data string data to write to stdin
---- @return table|nil result table or nil on error
---- @return string|nil error message
+--- @return table|nil #result table or nil on error
+--- @return string|nil #error message
 local function parent_process(pid, pipes, input_data)
     debug_log("parent_process: child PID=%d", pid)
     -- Close parent-irrelevant pipe ends
@@ -346,15 +346,15 @@ local function parent_process(pid, pipes, input_data)
 end
 
 --- Run a command as a subprocess with optional input data
---- @param cmd string The command to execute (path or command name)
---- @param args table|nil Command arguments as a table (e.g., {"arg1", "arg2"})
---- @param input_data string|nil Data to pipe into stdin
---- @return table|nil Result table with fields:
+--- @param cmd string the command to execute (path or command name)
+--- @param args table|nil command arguments as a table (e.g., {"arg1", "arg2"})
+--- @param input_data string|nil data to pipe into stdin
+--- @return table|nil #result table with fields:
 ---   - stdout_data: string captured from stdout (or nil on error)
 ---   - stderr_data: string captured from stderr (or nil on error)
 ---   - exit_status: integer exit code
 ---   or nil on subprocess error
---- @return string|nil Error message
+--- @return string|nil #error message
 function subprocess.run(cmd, args, input_data)
     -- Validate arguments
     if not cmd then
