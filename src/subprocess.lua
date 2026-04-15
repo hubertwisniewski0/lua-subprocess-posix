@@ -38,9 +38,7 @@ local function close_pipes(pipes, pipe_name)
         debug_log("close_pipes: closing all")
         for name, fd in pairs(pipes) do
             if fd then
-                debug_log("close_pipes: closing %s, fd=%d", name, fd)
-                posix.close(fd)
-                pipes[name] = nil
+                close_pipes(pipes, name)
             end
         end
     end
