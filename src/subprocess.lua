@@ -5,12 +5,16 @@ local posix = require("posix")
 local subprocess = {}
 
 local DEBUG = os.getenv("SUBPROCESS_DEBUG") == "1"
+local PID = posix.getpid().pid
 
 --- Print debug message if debug mode is enabled
 local function debug_log(...)
     if DEBUG then
         io.stderr:write(
-            string.format("[subprocess] %s\n", string.format(...))
+            string.format(
+                "[subprocess] [%d] %s\n",
+                PID, string.format(...)
+            )
         )
     end
 end
@@ -254,6 +258,8 @@ end
 --- @param args table command arguments
 --- @param pipes table pipe file descriptors
 local function child_process(cmd, args, pipes)
+    PID = posix.getpid().pid
+
     debug_log("child_process: redirecting file descriptors")
     -- Redirect file descriptors
     posix.dup2(pipes.stdin_r, posix.fileno(io.stdin))
