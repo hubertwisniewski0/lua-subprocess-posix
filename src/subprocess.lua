@@ -4,18 +4,18 @@
 local posix = require("posix")
 local subprocess = {}
 
--- Check if debug mode is enabled
 local DEBUG = os.getenv("SUBPROCESS_DEBUG") == "1"
 
 --- Print debug message if debug mode is enabled
 local function debug_log(...)
     if DEBUG then
-        io.stderr:write("[subprocess] ")
-        io.stderr:write(...)
-        io.stderr:write("\n")
-        io.stderr:flush()
+        io.stderr:write(
+            string.format("[subprocess] %s\n", string.format(...))
+        )
     end
 end
+
+debug_log("loading subprocess")
 
 --- Close pipe(s) by name or all if no name given
 --- @param pipes table the pipes table
@@ -24,22 +24,21 @@ local function close_pipes(pipes, pipe_name)
     if pipe_name then
         local fd = pipes[pipe_name]
         if fd then
-            debug_log("Closing pipe: ", pipe_name, ", fd=", fd)
+            debug_log("close_pipes: closing %s, fd=%d", pipe_name, fd)
             posix.close(fd)
             pipes[pipe_name] = nil
         else
-            debug_log("No such pipe: ", pipe_name)
+            debug_log("close_pipes: no such pipe: %s", pipe_name)
         end
     else
-        debug_log("Closing all pipes")
+        debug_log("close_pipes: closing all")
         for name, fd in pairs(pipes) do
             if fd then
-                debug_log("Closing pipe: ", name, ", fd=", fd)
+                debug_log("close_pipes: closing %s, fd=%d", name, fd)
                 posix.close(fd)
                 pipes[name] = nil
             end
         end
-        debug_log("Closed all pipes")
     end
 end
 
@@ -47,7 +46,6 @@ end
 --- @return table|nil pipes table with stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, exec_error_r, exec_error_w or nil on error
 --- @return string|nil error message if creation failed
 local function create_pipes()
-    debug_log("Creating pipes")
     local pipes = {}
 
     local stdin_r, stdin_w = posix.pipe()
@@ -59,7 +57,7 @@ local function create_pipes()
     pipes.stdin_w = stdin_w
     posix.fcntl(stdin_w, posix.F_SETFL, posix.O_NONBLOCK)
     posix.fcntl(stdin_w, posix.F_SETFD, posix.FD_CLOEXEC)
-    debug_log("Created stdin pipe: r=", stdin_r, " w=", stdin_w)
+    debug_log("create_pipes: stdin r=%d, w=%d", stdin_r, stdin_w)
 
     local stdout_r, stdout_w = posix.pipe()
     if not stdout_r then
@@ -70,7 +68,7 @@ local function create_pipes()
     pipes.stdout_w = stdout_w
     posix.fcntl(stdout_r, posix.F_SETFL, posix.O_NONBLOCK)
     posix.fcntl(stdout_r, posix.F_SETFD, posix.FD_CLOEXEC)
-    debug_log("Created stdout pipe: r=", stdout_r, " w=", stdout_w)
+    debug_log("create_pipes: stdout r=%d, w=%d", stdout_r, stdout_w)
 
     local stderr_r, stderr_w = posix.pipe()
     if not stderr_r then
@@ -81,7 +79,7 @@ local function create_pipes()
     pipes.stderr_w = stderr_w
     posix.fcntl(stderr_r, posix.F_SETFL, posix.O_NONBLOCK)
     posix.fcntl(stderr_r, posix.F_SETFD, posix.FD_CLOEXEC)
-    debug_log("Created stderr pipe: r=", stderr_r, " w=", stderr_w)
+    debug_log("create_pipes: stderr r=%d, w=%d", stderr_r, stderr_w)
 
     local exec_error_r, exec_error_w = posix.pipe()
     if not exec_error_r then
@@ -91,9 +89,8 @@ local function create_pipes()
     pipes.exec_error_r = exec_error_r
     pipes.exec_error_w = exec_error_w
     posix.fcntl(exec_error_w, posix.F_SETFD, posix.FD_CLOEXEC)
-    debug_log("Created exec_error pipe: r=", exec_error_r, " w=", exec_error_w)
+    debug_log("create_pipes: exec_error r=%d, w=%d", exec_error_r, exec_error_w)
 
-    debug_log("All pipes created successfully")
     return pipes, nil
 end
 
@@ -109,17 +106,17 @@ local function read_all(pipes, name)
         local chunk, err, err_code = posix.read(pipes[name], 4096)
         if not chunk then
             if err_code == posix.EAGAIN or err_code == posix.EWOULDBLOCK then
-                debug_log("read_all: ", name, " would block")
+                debug_log("read_all: %s would block", name)
                 break
             else
-                debug_log("read_all: reading from ", name, " failed: ", err)
+                debug_log("read_all: reading from %s failed: %s", name, err)
                 return nil, err
             end
         elseif #chunk > 0 then
             data = data .. chunk
-            debug_log("read_all: read ", #chunk, " bytes from ", name)
+            debug_log("read_all: read %d bytes from %s", #chunk, name)
         else
-            debug_log("read_all: no more data to read from ", name)
+            debug_log("read_all: no more data to read from %s", name)
             close_pipes(pipes, name)
             break
         end
@@ -139,7 +136,7 @@ local function write_all(pipes, name, data)
 
     while true do
         if data.pos >= #data.data then
-            debug_log("write_all: all data written, closing ", name)
+            debug_log("write_all: all data written, closing %s", name)
             close_pipes(pipes, name)
             break
         end
@@ -153,20 +150,20 @@ local function write_all(pipes, name, data)
 
         if not written then
             if err_code == posix.EAGAIN or err_code == posix.EWOULDBLOCK then
-                debug_log("write_all: ", name, " would block")
+                debug_log("write_all: %s would block", name)
                 break
             elseif err_code == posix.EPIPE then
-                debug_log("write_all: broken pipe, closing ", name)
+                debug_log("write_all: broken pipe, closing %s", name)
                 close_pipes(pipes, name)
                 break
             else
-                debug_log("write_all: writing to ", name, " failed: ", err)
+                debug_log("write_all: writing to %s failed: %s", name, err)
                 return nil, err
             end
         else
             data.pos = data.pos + written
             total_written = total_written + written
-            debug_log("write_all: wrote ", written, " bytes to stdin")
+            debug_log("write_all: wrote %d bytes to %s", written, name)
         end
     end
 
@@ -204,24 +201,24 @@ local function poll_and_read_write(pipes, data, result)
         for fd, _ in pairs(fds) do
             table.insert(fd_list, fd)
         end
-        debug_log("poll_and_read_write: polling fds=[", table.concat(fd_list, ", "), "]")
+        debug_log("poll_and_read_write: polling fds=[%s]", table.concat(fd_list, ", "))
     end
 
     local nfds, err = posix.poll.poll(fds)
 
     if not nfds then
-        debug_log("poll_and_read_write: poll failed: ", err)
+        debug_log("poll_and_read_write: poll failed: %s", err)
         return nil, err
     end
 
-    debug_log("poll_and_read_write: poll returned ", nfds, " events")
+    debug_log("poll_and_read_write: poll returned %d events", nfds)
 
     for fd, fd_info in pairs(fds) do
         local revents = fd_info.revents or {}
         local chunk, written
 
         if fd == pipes.stdin_w and (revents.OUT or revents.ERR) then
-            debug_log("poll_and_read_write: writing to stdin (pos=", data.pos, "/", #data.data, ")")
+            debug_log("poll_and_read_write: writing to stdin (pos=%d/%d)", data.pos, #data.data)
             written, err = write_all(pipes, "stdin_w", data)
             if not written then
                 return nil, err
@@ -257,7 +254,7 @@ end
 --- @param args table command arguments
 --- @param pipes table pipe file descriptors
 local function child_process(cmd, args, pipes)
-    debug_log("Child process: redirecting file descriptors")
+    debug_log("child_process: redirecting file descriptors")
     -- Redirect file descriptors
     posix.dup2(pipes.stdin_r, posix.fileno(io.stdin))
     posix.dup2(pipes.stdout_w, posix.fileno(io.stdout))
@@ -269,10 +266,10 @@ local function child_process(cmd, args, pipes)
     close_pipes(pipes, "exec_error_r")
 
     -- Execute the command with arguments
-    debug_log("Child process: executing ", cmd)
+    debug_log("child_process: executing %s", cmd)
     local _, err = posix.execp(cmd, args)
     -- If execp returns, it failed - write error to pipe and exit
-    debug_log("Child process: execp failed: ", err)
+    debug_log("child_process: execp failed: %s", err)
     posix.write(pipes.exec_error_w, err)
     os.exit(127)
 end
@@ -284,7 +281,7 @@ end
 --- @return table|nil result table or nil on error
 --- @return string|nil error message
 local function parent_process(pid, pipes, input_data)
-    debug_log("Parent process: child PID=", pid)
+    debug_log("parent_process: child PID=%d", pid)
     -- Close parent-irrelevant pipe ends
     close_pipes(pipes, "stdin_r")
     close_pipes(pipes, "stdout_w")
@@ -297,14 +294,14 @@ local function parent_process(pid, pipes, input_data)
     -- Check for exec errors early (before initializing result fields)
     local exec_err = posix.read(pipes.exec_error_r, 1024)
     if #exec_err > 0 then
-        debug_log("Parent process: child exec failed: ", exec_err)
+        debug_log("parent_process: child exec failed: %s", exec_err)
         err = "Failed to execute: " .. exec_err
         close_pipes(pipes, "exec_error_r")
         goto wait_child
     end
     close_pipes(pipes, "exec_error_r")
 
-    debug_log("Parent process: child exec succeeded, starting I/O loop")
+    debug_log("parent_process: child exec succeeded, starting I/O loop")
     do
         -- Track input data for writing
         local data = {data = input_data, pos = 0}
@@ -313,31 +310,31 @@ local function parent_process(pid, pipes, input_data)
             -- Poll and handle I/O
             local left, io_err = poll_and_read_write(pipes, data, result)
             if left == nil then
-                debug_log("Parent process: I/O failed: ", io_err)
-                debug_log("Parent process: killing child")
+                debug_log("parent_process: I/O failed: %s", io_err)
+                debug_log("parent_process: killing child")
                 posix.kill(pid, posix.SIGTERM)
                 err = "I/O error: " .. io_err
                 break
             elseif not left then
-                debug_log("Parent process: no more pipes, exiting I/O loop")
+                debug_log("parent_process: no more pipes, exiting I/O loop")
                 break
             end
         end
     end
 
     ::wait_child::
-    debug_log("Parent process: waiting for child to exit")
+    debug_log("parent_process: waiting for child to exit")
     local wpid, status, ret = posix.wait(pid)
-    debug_log("Parent process: wpid=", wpid, ", status=", status, ", ret=", ret)
+    debug_log("parent_process: wpid=%d, status=%s, ret=%d", wpid, status, ret)
 
     if wpid == pid then
         -- Extract exit status
         if status == "exited" then
             result.exit_status = ret
-            debug_log("Parent process: child exited with status ", ret)
+            debug_log("parent_process: child exited with status %d", ret)
         elseif status == "killed" then
             result.exit_status = 128 + ret
-            debug_log("Parent process: child killed by signal ", ret)
+            debug_log("parent_process: child killed by signal %d", ret)
         end
     end
 
@@ -367,7 +364,7 @@ function subprocess.run(cmd, args, input_data)
     args = args or {}
     if DEBUG then
         local args_str = table.concat(args, ", ")
-        debug_log("subprocess.run called: cmd=", cmd, " args=[", args_str, "]")
+        debug_log("run: cmd=%s, args=[%s]", cmd, args_str)
     end
 
     input_data = input_data or ""
@@ -383,12 +380,12 @@ function subprocess.run(cmd, args, input_data)
     -- Fork the process
     local pid, fork_err = posix.fork()
     if not pid then
-        debug_log("Fork failed: ", fork_err)
+        debug_log("run: fork failed: err", fork_err)
         err = "Failed to fork process: " .. fork_err
         goto cleanup
     end
 
-    debug_log("Process forked: pid=", pid)
+    debug_log("run: forked pid=%d", pid)
     if pid == 0 then
         child_process(cmd, args, pipes)
     else
