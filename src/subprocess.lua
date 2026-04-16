@@ -329,7 +329,10 @@ local function child_process(cmd, args, pipes)
 
     ::write_error::
     posix.write(pipes.exec_error_w, err)
-    os.exit(127)
+
+    -- LuaUnit seems to replace os.exit before running tests, which makes
+    -- them hang on child failure when debug logging is enabled.
+    posix._exit(127)
 end
 
 --- Parent process logic after fork
