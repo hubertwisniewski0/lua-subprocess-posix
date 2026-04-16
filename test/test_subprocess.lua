@@ -37,6 +37,15 @@ function TestSubprocess:test_command_with_multiple_args()
     lu.assertEquals(result.stdout_data, "hello world\n")
 end
 
+function TestSubprocess:test_command_with_zeroth_arg()
+    local result, err = subprocess.run("sh", {[0] = "tomato", "-c", "echo $0"})
+    lu.assertNil(err)
+    lu.assertNotNil(result)
+    lu.assertEquals(result.exit_status, 0)
+    lu.assertEquals(result.stdout_data, "tomato\n")
+end
+
+
 -- ============================================================================
 -- Input/Output Tests
 -- ============================================================================

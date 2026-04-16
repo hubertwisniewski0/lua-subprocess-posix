@@ -426,7 +426,12 @@ function subprocess.run(cmd, args, input_data)
 
     args = args or {}
     if DEBUG then
-        local args_str = table.concat(args, ", ")
+        local args_str = ""
+        if args[0] then
+            args_str = args_str .. string.format("[0]=%s, ", args[0])
+        end
+
+        args_str = args_str .. table.concat(args, ", ")
         debug_log("run: cmd=%s, args=[%s]", cmd, args_str)
     end
 
