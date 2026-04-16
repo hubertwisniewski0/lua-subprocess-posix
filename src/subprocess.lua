@@ -5,12 +5,14 @@ local posix = require("posix")
 local subprocess = {}
 
 local DEBUG = os.getenv("SUBPROCESS_DEBUG") == "1"
+local DEBUGFD = 2
 local PID = posix.getpid().pid
 
 --- Print debug message if debug mode is enabled
 local function debug_log(...)
     if DEBUG then
-        io.stderr:write(
+        posix.write(
+            DEBUGFD,
             string.format(
                 "[subprocess] [%d] %s\n",
                 PID, string.format(...)
@@ -259,6 +261,14 @@ local function child_process(cmd, args, pipes)
     PID = posix.getpid().pid
 
     debug_log("child_process: redirecting file descriptors")
+
+    -- Avoid leaking debug messages into captured stderr
+    if DEBUG then
+        DEBUGFD = posix.dup(DEBUGFD)
+        posix.fcntl(DEBUGFD, posix.F_SETFD, posix.FD_CLOEXEC)
+        debug_log("child_process: new DEBUGFD=%d", DEBUGFD)
+    end
+
     -- Redirect file descriptors
     posix.dup2(pipes.stdin_r, posix.fileno(io.stdin))
     posix.dup2(pipes.stdout_w, posix.fileno(io.stdout))
