@@ -31,7 +31,11 @@ local function close_pipes(pipes, pipe_name)
         local fd = pipes[pipe_name]
         if fd then
             debug_log("close_pipes: closing %s, fd=%d", pipe_name, fd)
-            posix.close(fd)
+            local ret, err = posix.close(fd)
+            if not ret then
+                -- Not critical
+                debug_log("close_pipes: close failed: %s", err)
+            end
             pipes[pipe_name] = nil
         else
             debug_log("close_pipes: no such pipe: %s", pipe_name)
@@ -260,30 +264,55 @@ end
 local function child_process(cmd, args, pipes)
     PID = posix.getpid().pid
 
+    local ret, err
+    close_pipes(pipes, "exec_error_r")
     debug_log("child_process: redirecting file descriptors")
 
     -- Avoid leaking debug messages into captured stderr
     if DEBUG then
-        DEBUGFD = posix.dup(DEBUGFD)
+        ret, err = posix.dup(DEBUGFD)
+        if not ret then
+            debug_log("child_process: DEBUGFD dup failed: %s", err)
+            goto write_error
+        end
+
+        DEBUGFD = ret
         posix.fcntl(DEBUGFD, posix.F_SETFD, posix.FD_CLOEXEC)
         debug_log("child_process: new DEBUGFD=%d", DEBUGFD)
     end
 
-    -- Redirect file descriptors
-    posix.dup2(pipes.stdin_r, posix.fileno(io.stdin))
-    posix.dup2(pipes.stdout_w, posix.fileno(io.stdout))
-    posix.dup2(pipes.stderr_w, posix.fileno(io.stderr))
+    debug_log("child_process: duping stdin")
+    ret, err = posix.dup2(pipes.stdin_r, posix.fileno(io.stdin))
+    if not ret then
+        debug_log("child_process: stdin dup failed: %s", err)
+        goto write_error
+    end
+
+    debug_log("child_process: duping stdout")
+    ret, err = posix.dup2(pipes.stdout_w, posix.fileno(io.stdout))
+    if not ret then
+        debug_log("child_process: stdout dup failed: %s", err)
+        goto write_error
+    end
+
+    debug_log("child_process: duping stderr")
+    ret, err = posix.dup2(pipes.stderr_w, posix.fileno(io.stderr))
+    if not ret then
+        debug_log("child_process: stderr dup failed: %s", err)
+        goto write_error
+    end
 
     close_pipes(pipes, "stdin_r")
     close_pipes(pipes, "stdout_w")
     close_pipes(pipes, "stderr_w")
-    close_pipes(pipes, "exec_error_r")
 
     -- Execute the command with arguments
     debug_log("child_process: executing %s", cmd)
-    local _, err = posix.execp(cmd, args)
+    ret, err = posix.execp(cmd, args)
     -- If execp returns, it failed - write error to pipe and exit
     debug_log("child_process: execp failed: %s", err)
+
+    ::write_error::
     posix.write(pipes.exec_error_w, err)
     os.exit(127)
 end
@@ -305,7 +334,8 @@ local function parent_process(pid, pipes, input_data)
     local err
     local result = {stdout_data = "", stderr_data = "", exit_status = nil}
 
-    -- Check for exec errors early (before initializing result fields)
+    -- Check for exec errors
+    debug_log("parent_process: waiting for child to exec or fail")
     local exec_err = posix.read(pipes.exec_error_r, 1024)
     if #exec_err > 0 then
         debug_log("parent_process: child exec failed: %s", exec_err)
@@ -313,9 +343,9 @@ local function parent_process(pid, pipes, input_data)
         close_pipes(pipes, "exec_error_r")
         goto wait_child
     end
+    debug_log("parent_process: child exec succeeded, starting I/O loop")
     close_pipes(pipes, "exec_error_r")
 
-    debug_log("parent_process: child exec succeeded, starting I/O loop")
     do
         -- Track input data for writing
         local data = {data = input_data, pos = 0}
@@ -394,7 +424,7 @@ function subprocess.run(cmd, args, input_data)
     -- Fork the process
     local pid, fork_err = posix.fork()
     if not pid then
-        debug_log("run: fork failed: err", fork_err)
+        debug_log("run: fork failed: %s", fork_err)
         err = "Failed to fork process: " .. fork_err
         goto cleanup
     end
