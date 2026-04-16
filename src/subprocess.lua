@@ -1,5 +1,6 @@
 --- subprocess: A Lua module for running commands as subprocesses
---- Similar to Python's subprocess module, using luaposix for process control
+--- Similar to Python's subprocess module, using luaposix for process
+--- control
 
 local posix = require("posix")
 local subprocess = {}
@@ -50,12 +51,20 @@ local function close_pipes(pipes, pipe_name)
     end
 end
 
---- Create all pipes (stdin, stdout, stderr, and exec_error for reporting execp failures)
---- @return table|nil #pipes table with stdin_r, stdin_w, stdout_r, stdout_w, stderr_r, stderr_w, exec_error_r, exec_error_w or nil on error
+--- Create all pipes (stdin, stdout, stderr, and exec_error for reporting
+--- execp failures)
+--- @return table|nil #pipes table with stdin_r, stdin_w, stdout_r,
+--- stdout_w, stderr_r, stderr_w, exec_error_r, exec_error_w or nil on
+--- error
 --- @return string|nil #error message if creation failed
 local function create_pipes()
     local pipes = {}
 
+    -- Calling pipe() and then setting FD_CLOEXEC is prone to race
+    -- conditions in multithreaded programs, where some child may inherit
+    -- the parent's end used to communicate with another child. The
+    -- solution would be to use pipe2(), but luaposix doesn't provide it
+    -- (rewrite in C?).
     local stdin_r, stdin_w = posix.pipe()
     if not stdin_r then
         close_pipes(pipes)
@@ -97,7 +106,8 @@ local function create_pipes()
     pipes.exec_error_r = exec_error_r
     pipes.exec_error_w = exec_error_w
     posix.fcntl(exec_error_w, posix.F_SETFD, posix.FD_CLOEXEC)
-    debug_log("create_pipes: exec_error r=%d, w=%d", exec_error_r, exec_error_w)
+    debug_log("create_pipes: exec_error r=%d, w=%d",
+        exec_error_r, exec_error_w)
 
     return pipes, nil
 end
@@ -113,11 +123,13 @@ local function read_all(pipes, name)
     while true do
         local chunk, err, err_code = posix.read(pipes[name], 4096)
         if not chunk then
-            if err_code == posix.EAGAIN or err_code == posix.EWOULDBLOCK then
+            if err_code == posix.EAGAIN
+                or err_code == posix.EWOULDBLOCK then
                 debug_log("read_all: %s would block", name)
                 break
             else
-                debug_log("read_all: reading from %s failed: %s", name, err)
+                debug_log("read_all: reading from %s failed: %s",
+                    name, err)
                 return nil, err
             end
         elseif #chunk > 0 then
@@ -153,11 +165,13 @@ local function write_all(pipes, name, data)
 
         -- Handle broken pipe gracefully
         local prev_handler = posix.signal(posix.SIGPIPE, posix.SIG_IGN)
-        local written, err, err_code = posix.write(pipes.stdin_w, data.data, nbytes, data.pos)
+        local written, err, err_code = posix.write(pipes.stdin_w,
+            data.data, nbytes, data.pos)
         posix.signal(posix.SIGPIPE, prev_handler)
 
         if not written then
-            if err_code == posix.EAGAIN or err_code == posix.EWOULDBLOCK then
+            if err_code == posix.EAGAIN
+                or err_code == posix.EWOULDBLOCK then
                 debug_log("write_all: %s would block", name)
                 break
             elseif err_code == posix.EPIPE then
@@ -182,7 +196,8 @@ end
 --- @param pipes table pipe file descriptors
 --- @param data table input data state {data=string, pos=number}
 --- @param result table result table to populate
---- @return boolean|nil #true if pipes remain, false if all closed, nil on error
+--- @return boolean|nil #true if pipes remain, false if all closed,
+--- nil on error
 --- @return string|nil #error message if operation failed
 local function poll_and_read_write(pipes, data, result)
     -- Setup poll file descriptors table
@@ -209,7 +224,8 @@ local function poll_and_read_write(pipes, data, result)
         for fd, _ in pairs(fds) do
             table.insert(fd_list, fd)
         end
-        debug_log("poll_and_read_write: polling fds=[%s]", table.concat(fd_list, ", "))
+        debug_log("poll_and_read_write: polling fds=[%s]",
+            table.concat(fd_list, ", "))
     end
 
     local nfds, err = posix.poll.poll(fds)
@@ -226,7 +242,8 @@ local function poll_and_read_write(pipes, data, result)
         local chunk, written
 
         if fd == pipes.stdin_w and (revents.OUT or revents.ERR) then
-            debug_log("poll_and_read_write: writing to stdin (pos=%d/%d)", data.pos, #data.data)
+            debug_log("poll_and_read_write: writing to stdin (pos=%d/%d)",
+                data.pos, #data.data)
             written, err = write_all(pipes, "stdin_w", data)
             if not written then
                 return nil, err
@@ -358,7 +375,8 @@ local function parent_process(pid, pipes, input_data)
                 err = "I/O error: " .. io_err
                 break
             elseif not left then
-                debug_log("parent_process: no more pipes, exiting I/O loop")
+                debug_log(
+                    "parent_process: no more pipes, exiting I/O loop")
                 break
             end
         end
@@ -367,7 +385,8 @@ local function parent_process(pid, pipes, input_data)
     ::wait_child::
     debug_log("parent_process: waiting for child to exit")
     local wpid, status, ret = posix.wait(pid)
-    debug_log("parent_process: wpid=%d, status=%s, ret=%d", wpid, status, ret)
+    debug_log("parent_process: wpid=%d, status=%s, ret=%d",
+        wpid, status, ret)
 
     if wpid == pid then
         -- Extract exit status
@@ -389,7 +408,8 @@ end
 
 --- Run a command as a subprocess with optional input data
 --- @param cmd string the command to execute (path or command name)
---- @param args table|nil command arguments as a table (e.g., {"arg1", "arg2"})
+--- @param args table|nil command arguments as a table
+--- (e.g., {"arg1", "arg2"})
 --- @param input_data string|nil data to pipe into stdin
 --- @return table|nil #result table with fields:
 ---   - stdout_data: string captured from stdout (or nil on error)
