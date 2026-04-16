@@ -43,10 +43,8 @@ local function close_pipes(pipes, pipe_name)
         end
     else
         debug_log("close_pipes: closing all")
-        for name, fd in pairs(pipes) do
-            if fd then
-                close_pipes(pipes, name)
-            end
+        for name, _ in pairs(pipes) do
+            close_pipes(pipes, name)
         end
     end
 end
