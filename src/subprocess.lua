@@ -262,8 +262,6 @@ end
 --- @param args table command arguments
 --- @param pipes table pipe file descriptors
 local function child_process(cmd, args, pipes)
-    PID = posix.getpid().pid
-
     local ret, err
     close_pipes(pipes, "exec_error_r")
     debug_log("child_process: redirecting file descriptors")
@@ -429,7 +427,9 @@ function subprocess.run(cmd, args, input_data)
         goto cleanup
     end
 
-    debug_log("run: forked pid=%d", pid)
+    PID = posix.getpid().pid
+    debug_log("run: fork returned %d", pid)
+
     if pid == 0 then
         child_process(cmd, args, pipes)
     else
